@@ -7,6 +7,5 @@ module.exports = {
     /** @param { Client } client  */
     execute(client) {
         Logger.log(`Logged in as ${client.user.tag}`);
-        client.user.setStatus("invisible");
     },
 };
