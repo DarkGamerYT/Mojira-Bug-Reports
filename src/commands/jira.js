@@ -59,10 +59,37 @@ module.exports = {
             return;
         };
 
+        const buttons = [
+            {
+                type: 2,
+                style: 5,
+                label: "View on Jira",
+                url: data.reportData.jiraLink,
+                emoji: {
+                    id: "1090311574423609416",
+                    name: "changelog",
+                },
+            },
+        ];
+    
+        if (data.reportData.resolution === "Duplicate") {
+            const originalReport = data.reportData.data.issuelinks[0].outwardIssue;
+            buttons.push({
+                type: 2,
+                style: 5,
+                label: "View duplicate",
+                url: "https://bugs.mojang.com/browse/".concat(originalReport.key),
+                emoji: {
+                    id: "1090311574423609416",
+                    name: "changelog",
+                },
+            });
+        };
+
         const message = await interaction.editReply({
             embeds: [ data.embed ],
             components: [
-                { type: 1, components: data.buttons }
+                { type: 1, components: buttons },
             ],
         });
 

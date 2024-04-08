@@ -11,7 +11,7 @@ const statusColors = {
     4: 0x0052cc,
 };
 
-async function getReport(value) {
+async function getReportData(value) {
     const response = await fetch(
         "https://bugs.mojang.com/rest/api/latest/issue/".concat(value), {
             method: "GET",
@@ -35,32 +35,31 @@ async function getReport(value) {
         .filter((a) => a.mimeType === "image/png")
         .sort(sort)?.[0];
 
-    const buttons = [
-        {
-            type: 2,
-            style: 5,
-            label: "View on Jira",
-            url: jiraLink,
-            emoji: {
-                id: "1090311574423609416",
-                name: "changelog",
-            },
-        },
-    ];
+    
+    return {
+        key, data, project,
+        jiraLink, fixVersion,
+        sinceVersion, status,
+        resolution,
+        created, updated,
+        reporter,
+        reporterAvatar, attachment,
+    };
+};
 
-    if (resolution === "Duplicate") {
-        const originalReport = data.issuelinks[0].outwardIssue;
-        buttons.push({
-            type: 2,
-            style: 5,
-            label: "View duplicate report",
-            url: "https://bugs.mojang.com/browse/".concat(originalReport.key),
-            emoji: {
-                id: "1090311574423609416",
-                name: "changelog",
-            },
-        });
-    }
+async function getReport(value) {
+    const reportData = await getReportData(value);
+    if (!reportData) return;
+
+    const {
+        key, data, project,
+        jiraLink, fixVersion,
+        sinceVersion, status,
+        resolution,
+        created, updated,
+        reporter,
+        reporterAvatar, attachment,
+    } = reportData;
 
     const title = "(".concat(key).concat(") ").concat(data.summary);
     const embed = {
@@ -128,6 +127,97 @@ async function getReport(value) {
         };
     };
 
+    return { embed, reportData };
+};
+
+async function getSimpleReport(value) {
+    const reportData = await getReportData(value);
+    if (!reportData) return;
+
+    const {
+        key, data, jiraLink,
+        status, resolution,
+        reporter,
+    } = reportData;
+    const buttons = [
+        { type: 1, components: [
+            {
+                type: 2,
+                style: 5,
+                label: "View on Jira",
+                url: jiraLink,
+                emoji: {
+                    id: "1090311574423609416",
+                    name: "changelog",
+                },
+            },
+        ] },
+    ];
+
+    if (resolution === "Duplicate") {
+        const originalReport = data.issuelinks[0].outwardIssue;
+        buttons[0].components.push({
+            type: 2,
+            style: 5,
+            label: "View duplicate",
+            url: "https://bugs.mojang.com/browse/".concat(originalReport.key),
+            emoji: {
+                id: "1090311574423609416",
+                name: "changelog",
+            },
+        });
+
+        buttons.push({ type: 1, components: [
+            {
+                type: 2,
+                style: 2,
+                label: "More details",
+                custom_id: "report-".concat(value),
+                emoji: {
+                    id: "1090311572024463380",
+                    name: "feedback",
+                },
+            },
+        ] });
+    } else {
+        buttons[0].components.push({
+            type: 2,
+            style: 2,
+            label: "More details",
+            custom_id: "report-".concat(value),
+            emoji: {
+                id: "1090311572024463380",
+                name: "feedback",
+            },
+        });
+    };
+
+    const title = "(".concat(key).concat(") ").concat(data.summary);
+    const embed = {
+        title: title.length < 256 ? title : title.substring(0, 253).concat("..."),
+        url: jiraLink,
+        color: statusColors[data.status.statusCategory.id] ?? 0x4e5058,
+        image: null,
+        video: null,
+        fields: [
+            {
+                name: "Reported by",
+                value: reporter,
+                inline: true,
+            },
+            {
+                name: "Status",
+                value: `${status} (${data.status.name})`,
+                inline: true,
+            },
+            {
+                name: "Resolution",
+                value: resolution ?? "Unresolved",
+                inline: true,
+            },
+        ],
+    };
+
     return { embed, buttons };
 };
 
@@ -135,5 +225,6 @@ module.exports = {
     sort,
     jiraRegex,
     statusColors,
+    getSimpleReport,
     getReport,
 };

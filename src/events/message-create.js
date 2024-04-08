@@ -1,20 +1,18 @@
 const { Events, Message } = require("discord.js");
-const { getReport, jiraRegex } = require("../utils");
+const { getSimpleReport, jiraRegex } = require("../utils");
 module.exports = {
     name: Events.MessageCreate,
     /** @param { Message } message  */
     async execute(message) {
         if (jiraRegex.test(message.content)) {
             const reportId = message.content.match(jiraRegex)[0];
-            const data = await getReport(reportId);
+            const data = await getSimpleReport(reportId);
             if (data === undefined) return;
 
             try {
                 const msg = await message.reply({
                     embeds: [ data.embed ],
-                    components: [
-                        { type: 1, components: data.buttons }
-                    ],
+                    components: data.buttons,
                     allowedMentions: { repliedUser: false },
                 });
 
