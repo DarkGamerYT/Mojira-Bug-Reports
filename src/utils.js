@@ -4,24 +4,59 @@ function sort(a, b) {
     return bTime - aTime;
 };
 
-const jiraRegex = /(?<=(?<=https|http):\/\/bugs\.mojang\.com\/browse\/)[^\s\/]+/;
 const statusColors = {
     2: 0xffcc00,
     3: 0x46ff27,
     4: 0x0052cc,
 };
 
-async function getReportData(value) {
+function matchRegex(value) {
+    const regex = /https?:\/\/(?:bugs\.mojang\.com\/browse\/(\w+)-(\d+)|bugs\.mojang\.com\/browse\/(\w+)\/issues\/(\w+)-(\d+)|report\.bugs\.mojang\.com\/servicedesk\/customer\/portal\/\d+\/(\w+)-(\d+))/;
+    const match = value.match(regex);
+    
+    if (match == void 0)
+        return;
+    
+    const project = match[1] || match[3] || match[6];
+    const issueId = match[2] || match[5] || match[7];
+    
+    return { project, issueId };
+};
+
+async function fetchReport(project, issueId) {
+    const reportId = project?.concat("-", issueId);
     const response = await fetch(
-        "https://bugs.mojang.com/rest/api/latest/issue/".concat(value), {
-            method: "GET",
+        "https://bugs.mojang.com/api/jql-search-post", {
+            method: "POST",
+            body: JSON.stringify({
+                advanced: true,
+                filter: "all",
+                maxResults: 25,
+                project,
+                search: "key = ".concat(reportId),
+                startAt: 0,
+            }),
             headers: { "Content-Type": "application/json" },
         },
     ).then((data) => data.json());
-    if (response === undefined || response?.errorMessages !== undefined) return;
-    const { key, fields: data } = response;
+    if (response?.statusCode !== void 0 && response?.statusCode !== 200)
+        return;
 
-    const project = data.project;
+    const report = response.issues.find((report) => report.key === reportId);
+    if (report == void 0)
+        return;
+
+    return report;
+};
+
+async function getReportData(project, issueId) {
+    const report = await fetchReport(project, issueId);
+    if (report == void 0)
+        return;
+    
+    const { key, fields: data } = report;
+    //console.log(data);
+    
     const jiraLink = "https://bugs.mojang.com/browse/".concat(key);
     const fixVersion = data.fixVersions.sort(sort)[0]?.name;
     const sinceVersion = data.versions.sort(sort).reverse()[0].name;
@@ -29,60 +64,61 @@ async function getReportData(value) {
     const resolution = data.resolution?.name;
     const created = Math.floor(new Date(data.created).getTime() / 1000);
     const updated = Math.floor(new Date(data.updated).getTime() / 1000);
-    const reporter = data.reporter.displayName;
-    const reporterAvatar = data.reporter.avatarUrls["48x48"].concat("0");
-    const attachment = data.attachment
+    //const reporter = data.reporter.displayName;
+    //const reporterAvatar = data.reporter.avatarUrls["48x48"].concat("0");
+    /*const attachment = data.attachment
         .filter((a) => a.mimeType === "image/png")
-        .sort(sort)?.[0];
+        .sort(sort)?.[0];*/
 
     
     return {
-        key, data, project,
+        key, data,
         jiraLink, fixVersion,
         sinceVersion, status,
         resolution,
         created, updated,
-        reporter,
-        reporterAvatar, attachment,
+        /*reporter,
+        reporterAvatar, attachment,*/
     };
 };
 
-async function getReport(value) {
-    const reportData = await getReportData(value);
-    if (!reportData) return;
+async function getReport(project, issueId) {
+    const reportData = await getReportData(project, issueId);
+    if (!reportData)
+        return;
 
     const {
-        key, data, project,
+        key, data,
         jiraLink, fixVersion,
         sinceVersion, status,
         resolution,
         created, updated,
-        reporter,
-        reporterAvatar, attachment,
+        /*reporter,
+        reporterAvatar, attachment,*/
     } = reportData;
 
     const title = "(".concat(key).concat(") ").concat(data.summary);
     const embed = {
         title: title.length < 256 ? title : title.substring(0, 253).concat("..."),
         url: jiraLink,
-        thumbnail: { url: reporterAvatar },
+        //thumbnail: { url: reporterAvatar },
         color: statusColors[data.status.statusCategory.id] ?? 0x4e5058,
         image: null,
         video: null,
         fields: [
-            {
+            /*{
                 name: "Reported by",
                 value: reporter,
                 inline: true,
-            },
+            },*/
             {
                 name: "Votes",
-                value: data.votes.votes,
+                value: data.customfield_10070 ?? 0,
                 inline: true,
             },
             {
                 name: "Project",
-                value: `[${project.key}](https://bugs.mojang.com/projects/${project.key})`,
+                value: `[${project}](https://bugs.mojang.com/projects/${project})`,
                 inline: true,
             },
 
@@ -120,24 +156,25 @@ async function getReport(value) {
         ],
     };
 
-    if (attachment !== undefined) {
+    /*if (attachment !== undefined) {
         switch (attachment.mimeType) {
             case "video/mp4": embed.video = { url: attachment.content }; break;
             case "image/png": embed.image = { url: attachment.content }; break;
         };
-    };
+    };*/
 
     return { embed, reportData };
 };
 
-async function getSimpleReport(value) {
-    const reportData = await getReportData(value);
-    if (!reportData) return;
+async function getSimpleReport(project, issueId) {
+    const reportData = await getReportData(project, issueId);
+    if (!reportData)
+        return;
 
     const {
         key, data, jiraLink,
         status, resolution,
-        reporter,
+        //reporter,
     } = reportData;
     const buttons = [
         { type: 1, components: [
@@ -172,7 +209,7 @@ async function getSimpleReport(value) {
                 type: 2,
                 style: 2,
                 label: "More details",
-                custom_id: "report-".concat(value),
+                custom_id: "report-".concat(key),
                 emoji: {
                     id: "1090311572024463380",
                     name: "feedback",
@@ -184,7 +221,7 @@ async function getSimpleReport(value) {
             type: 2,
             style: 2,
             label: "More details",
-            custom_id: "report-".concat(value),
+            custom_id: "report-".concat(key),
             emoji: {
                 id: "1090311572024463380",
                 name: "feedback",
@@ -200,11 +237,11 @@ async function getSimpleReport(value) {
         image: null,
         video: null,
         fields: [
-            {
+            /*{
                 name: "Reported by",
                 value: reporter,
                 inline: true,
-            },
+            },*/
             {
                 name: "Status",
                 value: `${status} (${data.status.name})`,
@@ -223,7 +260,7 @@ async function getSimpleReport(value) {
 
 module.exports = {
     sort,
-    jiraRegex,
+    matchRegex,
     statusColors,
     getSimpleReport,
     getReport,
